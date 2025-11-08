@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monkey's Game — Clave de Sol & Fá</title>
+  <style>
+    :root{
+      --bg:#f7f3ea;         /* bege suave */
+      --paper:#fff;         /* cartão */
+      --ink:#1f2937;        /* texto */
+      --accent:#8a5a44;     /* marrom suave */
+      --line:#e7dccf;       /* borda clara */
+      --ok:#059669;         /* verde */
+      --err:#b91c1c;        /* vermelho */
+      --w: 900px;           /* LARGURA ÚNICA p/ todos os blocos */
+      --padX: 16px;         /* padding lateral interno comum */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+      background:var(--bg); color:var(--ink);
+      display:flex; align-items:flex-start; justify-content:center; padding:20px;
+    }
+    .shell{width:min(var(--w),100%)}
+    .block{background:var(--paper); border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.08); padding:16px;}
+
+    /* ===== TOPO ===== */
+    header{width:100%; padding:0 var(--padX);} 
+    h1{margin:0 0 10px 0; font-size:clamp(18px,2.6vw,28px)}
+
+    /* ===== GRANDE PAUTA (SOL + FÁ) ===== */
+    .stage{width:100%; padding:12px var(--padX);} 
+    .stageInner{background:#faf7f1; border:1px solid var(--line); border-radius:12px; padding:12px}
+    svg{display:block; width:100%; height:360px}
+
+    /* ===== PAINEL DE RESPOSTAS ===== */
+    .panel{width:100%; padding:12px var(--padX);} 
+    .panelInner{background:#faf7f1; border:1px solid var(--line); border-radius:12px; padding:14px;}
+
+    .row{display:flex; align-items:center; justify-content:flex-start; gap:32px; margin-bottom:14px}
+    .row:last-child{margin-bottom:0}
+
+    .btns{display:grid; grid-template-columns:repeat(7,1fr); gap:8px}
+    button{appearance:none; border:none; border-radius:10px; padding:12px; font-weight:700; cursor:pointer; background:#efe6da; color:#3a2f28; min-height:44px}
+    button:hover{filter:brightness(.98)}
+    button:active{transform:translateY(1px)}
+    .success{background:var(--ok); color:#fff}
+    .danger{background:var(--err); color:#fff}
+
+    .muted{font-size:12px; opacity:.8}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#eee; padding:2px 6px; border-radius:6px}
+
+    @media (max-width:720px){
+      :root{ --w: 92vw; }
+      svg{height:320px}
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="block">
+      <header>
+        <h1>Monkey's Game — Clave de <span style="color:var(--accent)">Sol</span> & <span style="color:var(--accent)">Fá</span></h1>
+      </header>
+
+      <section class="stage">
+        <div class="stageInner">
+          <svg id="svg" viewBox="0 0 800 360" aria-label="Grande pauta com claves de Sol e Fá"></svg>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelInner">
+          <div class="row">
+            <strong>Nome das notas:</strong>
+            <label><input type="radio" name="solfege" value="do" checked> Do–Ré–Mi</label>
+            <label><input type="radio" name="solfege" value="cde"> C–D–E</label>
+          </div>
+          <div class="row">
+            <div class="btns" id="answerBtns"></div>
+          <div class="row">
+            <button id="skip">Próxima (pular)</button>
+            <button id="reveal">Revelar resposta</button>
+            <button id="reset" class="danger">Reiniciar</button>
+      </section>
+    </div>
+  </div>
+
+<script>
+// ====== CONSTANTES DO SVG ======
+const svg = document.getElementById('svg');
+const STAFF_LEFT = 50;     // início das linhas
+const STAFF_RIGHT = 750;   // fim das linhas
+const S = 14;              // espaçamento entre linhas
+const NOTE_X = 420;        // X da nota
+
+// Sistema de referência: índice 0 = linha de baixo da clave de Fá
+// 0..8  -> linhas/espaços da Fá; 10 = Dó central; 12..20 -> Sol
+// Permitimos -4..24 para 4 linhas além do conjunto completo
+
+function posIndexToY(posIndex){
+  const bassBottomY = 250;                 // y da linha de baixo da Fá
+  return bassBottomY - posIndex*(S/2);     // cada passo = meio espaço
+}
+
+function clearSVG(){ svg.innerHTML = ''; }
+function line(x1,y1,x2,y2){
+  const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+  el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+  el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+  el.setAttribute('stroke','#1f2937'); el.setAttribute('stroke-width','2');
+  svg.appendChild(el);
+}
+function text(x,y,str,size=82){
+  const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+  t.setAttribute('x',x); t.setAttribute('y',y);
+  t.setAttribute('font-size',size);
+  t.setAttribute('dominant-baseline','middle');
+  t.setAttribute('text-anchor','middle');
+  t.setAttribute('font-family','"Segoe UI Symbol", "Noto Music", system-ui, sans-serif');
+  t.textContent = str; svg.appendChild(t);
+}
+function ellipse(cx,cy,rx,ry){
+  const e = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+  e.setAttribute('cx',cx); e.setAttribute('cy',cy);
+  e.setAttribute('rx',rx); e.setAttribute('ry',ry);
+  e.setAttribute('fill','#111');
+  e.setAttribute('transform',`rotate(-18 ${cx} ${cy})`);
+  svg.appendChild(e);
+}
+
+function drawGrandStaff(){
+  // Clave de Fá — linhas (0,2,4,6,8)
+  for(let i=0;i<5;i++) line(STAFF_LEFT, posIndexToY(i*2), STAFF_RIGHT, posIndexToY(i*2));
+  // Clave de Sol — linhas (12,14,16,18,20)
+  for(let i=0;i<5;i++) line(STAFF_LEFT, posIndexToY(12+i*2), STAFF_RIGHT, posIndexToY(12+i*2));
+  // Clefs
+  text(60, posIndexToY(4),  "𝄢", 82); // F clef
+  text(60, posIndexToY(16), "𝄞", 84); // G clef
+}
+
+function drawNote(posIndex){
+  const y = posIndexToY(posIndex);
+  ellipse(NOTE_X, y, 12, 9);
+  // Ledger lines
+  function ledger(p){ line(NOTE_X-22, posIndexToY(p), NOTE_X+22, posIndexToY(p)); }
+  if(posIndex < 0){
+    for(let p=0; p>=posIndex; p--) if(p%2===0) ledger(p); // abaixo da Fá
+  }
+  if(posIndex === 10) ledger(10); // dó central
+  if(posIndex > 20){
+    for(let p=20; p<=posIndex; p++) if(p%2===0 && p>20) ledger(p); // acima da Sol
+  }
+}
+
+// ====== LÓGICA DAS NOTAS ======
+const names = { do:['Do','Ré','Mi','Fá','Sol','Lá','Si'], cde:['C','D','E','F','G','A','B'] };
+const state = { solfege:'do', current:null };
+
+function positionToNameIndex(posIndex){
+  // Base: linha de baixo da Fá = G (índice 4 em [C,D,E,F,G,A,B])
+  const base = 4; // G
+  const idx = (base + posIndex) % 7;  
+  return (idx+7)%7;
+}
+function randomPos(){
+  const min=-4, max=24;  // 4 abaixo da Fá .. 4 acima da Sol
+  return Math.floor(Math.random()*(max-min+1))+min;
+}
+
+function newRound(){
+  clearSVG();
+  drawGrandStaff();
+  const pos = randomPos();
+  drawNote(pos);
+  state.current = { posIndex: pos, nameIdx: positionToNameIndex(pos) };
+}
+
+// ====== ÁUDIO: CONTEXTO E UTIL ======
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+function ensureAudio(){ if(audioCtx.state === 'suspended'){ audioCtx.resume(); } }
+
+// ====== ÁUDIO: SUCESSO (sample real se disponível) ======
+let sampleBuffer = null; // será substituído pelo sample embutido abaixo
+let sampleRootMidi = 60; // C4 por padrão
+function setSampleRoot(m){ sampleRootMidi = parseInt(m,10)||60; }
+function loadSampleFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const arrayBuf = reader.result;
+      const audioBuf = await audioCtx.decodeAudioData(arrayBuf.slice(0));
+      sampleBuffer = audioBuf;
+    }catch(err){ console.error('Falha ao carregar sample', err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function playSampleFromMidi(midi){
+  if(!sampleBuffer){ playSuccessSynth(); return; }
+  ensureAudio();
+  const src = audioCtx.createBufferSource();
+  src.buffer = sampleBuffer;
+  const rate = Math.pow(2, (midi - sampleRootMidi)/12);
+  src.playbackRate.value = rate;
+  const g = audioCtx.createGain();
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(0.9, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
+  src.connect(g); g.connect(audioCtx.destination);
+  src.start(now);
+}
+function playSuccess(){
+  const midi = posIndexToMidi(state.current.posIndex);
+  playSampleFromMidi(midi);
+}
+function playSuccessSynth(){
+  const midi = posIndexToMidi(state.current.posIndex);
+  const freq = midiToFreq(midi);
+  const o1 = audioCtx.createOscillator();
+  const o2 = audioCtx.createOscillator();
+  const o3 = audioCtx.createOscillator();
+  o1.type = 'triangle'; o1.frequency.value = freq;
+  o2.type = 'triangle'; o2.frequency.value = freq * 2;
+  o3.type = 'triangle'; o3.frequency.value = freq * 0.5;
+  const g = audioCtx.createGain();
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(0.45, now + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
+  o1.connect(g); o2.connect(g); o3.connect(g); g.connect(audioCtx.destination);
+  o1.start(now); o2.start(now); o3.start(now);
+  o1.stop(now + 0.95); o2.stop(now + 0.95); o3.stop(now + 0.95);
+}
+
+// ====== ÁUDIO: ERRO (buzz filtrado) ======
+function playError(){
+  ensureAudio();
+  const dur = 0.35;
+  const sr = audioCtx.sampleRate;
+  const length = Math.floor(sr*dur);
+  const buffer = audioCtx.createBuffer(1, length, sr);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<length;i++){ data[i] = (Math.random()*2 - 1) * 0.6; }
+  const src = audioCtx.createBufferSource(); src.buffer = buffer;
+  const hp = audioCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=200;
+  const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1500;
+  const g = audioCtx.createGain();
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0.001, now);
+  g.gain.linearRampToValueAtTime(0.25, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+  src.start(now); src.stop(now + dur);
+}
+
+// ====== Mapeamento posição → frequência (C4 no índice 10) ======
+const STEP_SEMITONES = [0,2,4,5,7,9,11]; // C D E F G A B
+function posIndexToMidi(posIndex){
+  const d = posIndex - 10;              // distância diatônica a partir de C4
+  const q = Math.floor(d/7);            // saltos de oitava
+  const r = d - q*7;                    // passo dentro da oitava (0..6)
+  return 60 + q*12 + STEP_SEMITONES[r]; // 60 = C4
+}
+function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+
+// ====== UI ======
+const btnsWrap = document.getElementById('answerBtns');
+function renderAnswerButtons(){
+  btnsWrap.innerHTML='';
+  names[state.solfege].forEach((n,i)=>{
+    const b=document.createElement('button');
+    b.textContent=n;
+    b.addEventListener('click',()=>submitAnswer(i));
+    btnsWrap.appendChild(b);
+  });
+}
+function submitAnswer(idx){ ensureAudio();
+  const correct = idx===state.current.nameIdx;
+  if(correct) playSuccess(); else playError();
+  [...btnsWrap.querySelectorAll('button')].forEach((b,i)=>{
+    b.disabled=true;
+    if(i===state.current.nameIdx) b.classList.add('success');
+    if(i===idx && !correct) b.classList.add('danger');
+  });
+  setTimeout(()=>{ renderAnswerButtons(); newRound(); }, 900);
+}
+
+document.querySelectorAll('input[name="solfege"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    state.solfege = document.querySelector('input[name="solfege"]:checked').value;
+    renderAnswerButtons();
+  });
+});
+
+document.getElementById('skip').addEventListener('click',()=>{ renderAnswerButtons(); newRound(); });
+
+document.getElementById('reveal').addEventListener('click',()=>{
+  [...btnsWrap.querySelectorAll('button')].forEach((b,i)=>{
+    if(i===state.current.nameIdx) b.classList.add('success');
+    b.disabled=true;
+  });
+});
+
+document.getElementById('reset').addEventListener('click',()=>{ newRound(); renderAnswerButtons(); });
+
+// ====== SAMPLE EMBUTIDO GERADO (C4 "piano-like") ======
+// Geramos um sample C4 internamente (sem precisar enviar arquivo) usando síntese aditiva + envelope,
+// e o usamos como se fosse um sample real (transposto por playbackRate).
+(async function(){
+  try{
+    const sr = 44100;           // sample rate do offline render
+    const dur = 1.0;            // 1s de amostra
+    const off = new OfflineAudioContext(1, Math.floor(sr*dur), sr);
+
+    // Osciladores levemente desafinados para riqueza de timbre
+    const o1 = off.createOscillator(); o1.type='sine'; o1.frequency.value = 261.6256; // C4
+    const o2 = off.createOscillator(); o2.type='sine'; o2.frequency.value = 523.2511; // 2ª harmônica
+    const o3 = off.createOscillator(); o3.type='sine'; o3.frequency.value = 392.0;    // G4 (5ª) para cor
+
+    // Envelope de ganho (ataque curto e decay longo)
+    const g = off.createGain();
+    g.gain.setValueAtTime(0, 0);
+    g.gain.linearRampToValueAtTime(0.9, 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, 0.95);
+
+    // Filtro leve para suavizar e aproximar de "piano"
+    const lp = off.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 6000; lp.Q.value=0.5;
+
+    o1.connect(g); o2.connect(g); o3.connect(g); g.connect(lp); lp.connect(off.destination);
+    o1.start(0); o2.start(0); o3.start(0);
+    o1.stop(dur); o2.stop(dur); o3.stop(dur);
+
+    const rendered = await off.startRendering();
+    // Carrega no contexto principal
+    sampleBuffer = rendered;
+    sampleRootMidi = 60; // C4
+    console.log('✅ Sample embutido gerado (C4)');
+  }catch(err){ console.error('Falha ao gerar sample embutido', err); }
+})();
+
+// Controles do sampler (opcional, mantido caso queira trocar depois)
+const sampleFileEl = document.getElementById('sampleFile');
+const sampleRootEl = document.getElementById('sampleRoot');
+if(sampleFileEl){ sampleFileEl.addEventListener('change', (e)=> loadSampleFile(e.target.files[0])); }
+if(sampleRootEl){ sampleRootEl.addEventListener('change', (e)=> setSampleRoot(e.target.value)); }
+
+// atalhos
+window.addEventListener('keydown',(e)=>{
+  const k=e.key.toLowerCase();
+  const mapLetters={a:5,b:6,c:0,d:1,e:2,f:3,g:4};
+  const mapDoReMi={d:0,r:1,m:2,f:3,s:4,l:5,t:6};
+  if(state.solfege==='cde' && k in mapLetters) submitAnswer(mapLetters[k]);
+  if(state.solfege==='do'  && k in mapDoReMi ) submitAnswer(mapDoReMi[k]);
+});
+
+// ====== SANITY CHECKS ======
+(function(){
+  console.assert(typeof posIndexToMidi==='function','posIndexToMidi ausente');
+  console.assert(!isNaN(posIndexToMidi(10)),'posIndexToMidi(10) inválido');
+  console.assert(typeof playError==='function','playError ausente');
+  console.assert(typeof playSuccess==='function','playSuccess ausente');
+})();
+
+renderAnswerButtons();
+newRound();
+</script>
+</body>
+</html>
