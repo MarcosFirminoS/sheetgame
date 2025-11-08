@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Monkey's Game — Clave de Sol & Fá</title>
+  <title>Joguinho de Notas — Clave de Sol & Fá</title>
   <style>
     :root{
       --bg:#f7f3ea;         /* bege suave */
@@ -49,6 +49,10 @@
     .success{background:var(--ok); color:#fff}
     .danger{background:var(--err); color:#fff}
 
+    /* HUD */
+    .status{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px}
+    .pill{padding:6px 10px; border-radius:999px; background:#efe6da; color:var(--accent); font-weight:700; font-size:12px}
+
     .muted{font-size:12px; opacity:.8}
     .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#eee; padding:2px 6px; border-radius:6px}
 
@@ -62,7 +66,11 @@
   <div class="shell">
     <div class="block">
       <header>
-        <h1>Monkey's Game — Clave de <span style="color:var(--accent)">Sol</span> & <span style="color:var(--accent)">Fá</span></h1>
+        <h1>Joguinho de Notas — Clave de <span style="color:var(--accent)">Sol</span> & <span style="color:var(--accent)">Fá</span></h1>
+        <div class="status">
+          <span class="pill" id="hits">Acertos: 0</span>
+          <span class="pill" id="misses">Erros: 0</span>
+        </div>
       </header>
 
       <section class="stage">
@@ -80,10 +88,13 @@
           </div>
           <div class="row">
             <div class="btns" id="answerBtns"></div>
-          <div class="row">
+          </div>
             <button id="skip">Próxima (pular)</button>
             <button id="reveal">Revelar resposta</button>
             <button id="reset" class="danger">Reiniciar</button>
+          </div>
+          <div class="muted">Dica: use o teclado <span class="kbd">A B C D E F G</span> (ou <span class="kbd">D R M F S L T</span> para Do–Ré…)</div>
+        </div>
       </section>
     </div>
   </div>
@@ -157,7 +168,7 @@ function drawNote(posIndex){
 
 // ====== LÓGICA DAS NOTAS ======
 const names = { do:['Do','Ré','Mi','Fá','Sol','Lá','Si'], cde:['C','D','E','F','G','A','B'] };
-const state = { solfege:'do', current:null };
+const state = { solfege:'do', current:null, hits:0, misses:0 };
 
 function positionToNameIndex(posIndex){
   // Base: linha de baixo da Fá = G (índice 4 em [C,D,E,F,G,A,B])
@@ -280,13 +291,16 @@ function renderAnswerButtons(){
 }
 function submitAnswer(idx){ ensureAudio();
   const correct = idx===state.current.nameIdx;
-  if(correct) playSuccess(); else playError();
+  if(correct){ state.hits++; playSuccess(); } else { state.misses++; playError(); }
+  updateHUD();
   [...btnsWrap.querySelectorAll('button')].forEach((b,i)=>{
     b.disabled=true;
     if(i===state.current.nameIdx) b.classList.add('success');
     if(i===idx && !correct) b.classList.add('danger');
   });
-  setTimeout(()=>{ renderAnswerButtons(); newRound(); }, 900);
+  setTimeout(()=>{ renderAnswerButtons();
+updateHUD();
+newRound(); }, 900);
 }
 
 document.querySelectorAll('input[name="solfege"]').forEach(r=>{
@@ -305,7 +319,7 @@ document.getElementById('reveal').addEventListener('click',()=>{
   });
 });
 
-document.getElementById('reset').addEventListener('click',()=>{ newRound(); renderAnswerButtons(); });
+document.getElementById('reset').addEventListener('click',()=>{ state.hits=0; state.misses=0; updateHUD(); newRound(); renderAnswerButtons(); });
 
 // ====== SAMPLE EMBUTIDO GERADO (C4 "piano-like") ======
 // Geramos um sample C4 internamente (sem precisar enviar arquivo) usando síntese aditiva + envelope,
@@ -356,6 +370,13 @@ window.addEventListener('keydown',(e)=>{
   if(state.solfege==='cde' && k in mapLetters) submitAnswer(mapLetters[k]);
   if(state.solfege==='do'  && k in mapDoReMi ) submitAnswer(mapDoReMi[k]);
 });
+
+function updateHUD(){
+  const h=document.getElementById('hits');
+  const m=document.getElementById('misses');
+  if(h) h.textContent = `Acertos: ${state.hits}`;
+  if(m) m.textContent = `Erros: ${state.misses}`;
+}
 
 // ====== SANITY CHECKS ======
 (function(){
